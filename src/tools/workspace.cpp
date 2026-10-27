@@ -9,8 +9,37 @@
 
 namespace fs = std::filesystem;
 
-bool Workspace::resolve(std::string_view /*user_path*/, fs::path* /*out*/,
+bool Workspace::resolve(std::string_view user_path, fs::path* out,
                         std::string* reason) const {
-    *reason = "Workspace::resolve not implemented yet";   // TODO
-    return false;
+    try {
+        if (user_path.empty()) {
+            *reason = "empty path";
+            return false;
+        }
+        if (user_path.find('\0') != std::string_view::npos) {
+            *reason = "path contains a NUL byte";
+            return false;
+        }
+        fs::path p{std::string(user_path)};
+        if (p.is_absolute() || p.has_root_path()) {
+            *reason = "absolute paths are not allowed";
+            return false;
+        }
+        fs::path normalized = p.lexically_normal();
+        if (normalized.begin() != normalized.end() &&
+            *normalized.begin() == "..") {
+            *reason = "path escapes the workspace";
+            return false;
+        }
+        if (normalized == ".") {
+            *out = root();
+        } else {
+            *out = root() / normalized;
+        }
+        reason->clear();
+        return true;
+    } catch (...) {
+        *reason = "could not process path";
+        return false;
+    }
 }

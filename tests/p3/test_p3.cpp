@@ -94,6 +94,115 @@ TEST(calc_division_by_zero) {
     CHECK(err == "division by zero");
 }
 
+TEST(reg_10000_tools) {
+    ToolRegistry r;
+    Tool* first = nullptr;
+
+    for (int i = 0; i < 10000; ++i) {
+        std::string name = "tool_" + std::to_string(i);
+
+        REQUIRE(r.add(std::make_unique<NamedTool>(name)));
+
+        if (i == 0) {
+            first = r.find(name);
+        }
+
+        CHECK(r.load_factor() <= 1.0);
+    }
+
+    REQUIRE(first != nullptr);
+    CHECK(r.size() == 10000);
+    CHECK(r.find("tool_0") == first);
+
+    for (int i = 0; i < 10000; ++i) {
+        std::string name = "tool_" + std::to_string(i);
+        Tool* found = r.find(name);
+
+        REQUIRE(found != nullptr);
+        CHECK(found->name() == name);
+    }
+
+    CHECK(r.max_probe_length() <= 64);
+
+    std::printf(
+        "Registry: buckets=%zu, load=%.6f, longest chain=%zu\n",
+        r.bucket_count(), r.load_factor(), r.max_probe_length());
+
+    std::vector<int> weak_counts(r.bucket_count(), 0);
+    int weak_longest = 0;
+
+    for (int i = 0; i < 10000; ++i) {
+        std::string name = "tool_" + std::to_string(i);
+        std::size_t index =
+            (name[0] + name.size()) % r.bucket_count();
+
+        ++weak_counts[index];
+
+        if (weak_counts[index] > weak_longest) {
+            weak_longest = weak_counts[index];
+        }
+    }
+
+    std::printf("Weak hash: longest chain=%d\n", weak_longest);
+}
+
+TEST(ws_accepts_safe_paths) {
+    TempDir d;
+    Workspace ws(d.path());
+
+    struct Case {
+        const char* input;
+        fs::path expected;
+    };
+
+    const Case cases[] = {
+        {"notes/todo.txt", ws.root() / "notes/todo.txt"},
+        {"./notes//todo.txt", ws.root() / "notes/todo.txt"},
+        {".", ws.root()},
+        {"a/../b", ws.root() / "b"},
+        {"a/..", ws.root()},
+        {"new/dir/file.txt", ws.root() / "new/dir/file.txt"},
+        {"my..notes.txt", ws.root() / "my..notes.txt"}
+    };
+
+    CHECK(!fs::exists(ws.root() / "new"));
+
+    for (const auto& test : cases) {
+        fs::path out;
+        std::string reason;
+
+        REQUIRE(ws.resolve(test.input, &out, &reason));
+        CHECK(out == test.expected);
+        CHECK(reason.empty());
+    }
+
+    CHECK(!fs::exists(ws.root() / "new"));
+}
+
+TEST(ws_rejects_unsafe_paths) {
+    TempDir d;
+    Workspace ws(d.path());
+
+    const std::vector<std::string> paths = {
+        "",
+        std::string("notes") + '\0' + "/x",
+        "/etc/passwd",
+        "..",
+        "../etc/passwd",
+        "a/../../b",
+        "notes/../../ws/notes/todo.txt",
+        ws.root().string()
+    };
+
+    for (const auto& path : paths) {
+        fs::path out;
+        std::string reason;
+
+        CHECK(!ws.resolve(path, &out, &reason));
+        CHECK(!reason.empty());
+    }
+}
+
 // ------------------------------------------------------------- your tests
 //
 // Still to write (spec §6 has the full list). Suggested names:

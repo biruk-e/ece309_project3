@@ -74,4 +74,6 @@ private:
 
     std::vector<Bucket> buckets_;
     std::size_t count_ = 0;
+
+    void rehash(std::size_t new_bucket_count);
 };

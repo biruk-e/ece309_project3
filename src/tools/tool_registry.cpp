@@ -32,6 +32,10 @@ bool ToolRegistry::add(std::unique_ptr<Tool> tool) {
         return false;
     }
 
+    if (count_ == buckets_.size()) {
+        rehash(buckets_.size() * 2);
+    }
+
     std::size_t index = hash(name) % buckets_.size();
     buckets_[index].push_back(std::move(tool));
     ++count_;
@@ -55,18 +59,43 @@ std::size_t ToolRegistry::size() const noexcept {
     return count_;
 }
 
-void ToolRegistry::for_each(const std::function<void(const Tool&)>& /*fn*/) const {
-    // TODO
+void ToolRegistry::for_each(
+    const std::function<void(const Tool&)>& fn) const {
+
+    for (const auto& bucket : buckets_) {
+        for (const auto& tool : bucket) {
+            fn(*tool);
+        }
+    }
 }
 
 std::size_t ToolRegistry::bucket_count() const noexcept {
-    return 0;   // TODO
+    return buckets_.size();
 }
 
 double ToolRegistry::load_factor() const noexcept {
-    return 0.0;   // TODO
+    return static_cast<double>(count_) / static_cast<double>(buckets_.size());
 }
 
 std::size_t ToolRegistry::max_probe_length() const {
-    return 0;   // TODO
+    std::size_t longest = 0;
+    for (const auto& bucket : buckets_) {
+        if (bucket.size() > longest) {
+            longest = bucket.size();
+        }
+    }
+    return longest;
+}
+
+void ToolRegistry::rehash(std::size_t new_bucket_count) {
+    std::vector<Bucket> new_buckets(new_bucket_count);
+
+    for (auto& bucket : buckets_) {
+        for (auto& tool : bucket) {
+            std::size_t index = hash(tool->name()) % new_bucket_count;
+            new_buckets[index].push_back(std::move(tool));
+        }
+    }
+
+    buckets_ = std::move(new_buckets);
 }
