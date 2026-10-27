@@ -203,6 +203,141 @@ TEST(ws_rejects_unsafe_paths) {
     }
 }
 
+TEST(reg_empty) {
+    ToolRegistry r;
+
+    CHECK(r.size() == 0);
+    CHECK(r.bucket_count() >= 1);
+    CHECK(r.bucket_count() <= 64);
+    CHECK(r.load_factor() == 0.0);
+    CHECK(r.max_probe_length() == 0);
+    CHECK(r.find("missing") == nullptr);
+    CHECK(r.size() == 0);
+}
+
+TEST(reg_null_rejected) {
+    ToolRegistry r;
+
+    CHECK(!r.add(nullptr));
+    CHECK(r.size() == 0);
+
+    REQUIRE(r.add(std::make_unique<NamedTool>("alpha")));
+    Tool* original = r.find("alpha");
+
+    CHECK(!r.add(nullptr));
+    CHECK(r.size() == 1);
+    CHECK(r.find("alpha") == original);
+
+    CHECK(r.find("missing") == nullptr);
+    CHECK(r.size() == 1);
+}
+
+TEST(reg_for_each_visits_each_once) {
+    ToolRegistry r;
+
+    REQUIRE(r.add(std::make_unique<NamedTool>("alpha")));
+    REQUIRE(r.add(std::make_unique<NamedTool>("beta")));
+    REQUIRE(r.add(std::make_unique<NamedTool>("gamma")));
+
+    std::vector<std::string> visited;
+
+    r.for_each([&](const Tool& tool) {
+        visited.push_back(tool.name());
+    });
+
+    CHECK(visited.size() == 3);
+
+    for (const char* name : {"alpha", "beta", "gamma"}) {
+        int count = 0;
+
+        for (const auto& entry : visited) {
+            if (entry == name) {
+                ++count;
+            }
+        }
+
+        CHECK(count == 1);
+    }
+}
+
+TEST(calc_left_to_right) {
+    double value = 0;
+    std::string error;
+
+    REQUIRE(eval("10 - 4 - 3", &value, &error));
+    CHECK(value == 3);
+
+    REQUIRE(eval("100 / 10 / 5", &value, &error));
+    CHECK(value == 2);
+}
+
+TEST(calc_parentheses) {
+    double value = 0;
+    std::string error;
+
+    REQUIRE(eval("(2 + 3) * 4", &value, &error));
+    CHECK(value == 20);
+
+    REQUIRE(eval("2 * (3 + 4) - 5", &value, &error));
+    CHECK(value == 9);
+}
+
+TEST(calc_negatives_and_decimals) {
+    double value = 0;
+    std::string error;
+
+    REQUIRE(eval("-3 * -3", &value, &error));
+    CHECK(value == 9);
+
+    REQUIRE(eval("7 / 2", &value, &error));
+    CHECK(value == 3.5);
+}
+
+TEST(calc_computed_zero_divisor) {
+    double value = 0;
+    std::string error;
+
+    CHECK(!eval("1 / (2 - 2)", &value, &error));
+    CHECK(error == "division by zero");
+}
+
+TEST(calc_custom_expressions) {
+    double value = 0;
+    std::string error;
+
+    REQUIRE(eval("2 * -3 + 1", &value, &error));
+    CHECK(value == -5);
+
+    REQUIRE(eval("(8 - 2) / (1 + 2)", &value, &error));
+    CHECK(value == 2);
+}
+
+TEST(calc_long_expression) {
+    std::string expression = "1";
+
+    for (int i = 1; i < 20000; ++i) {
+        expression += "+1";
+    }
+
+    double value = 0;
+    std::string error;
+
+    REQUIRE(eval(expression, &value, &error));
+    CHECK(value == 20000);
+}
+
+TEST(calc_deep_parentheses) {
+    std::string expression(5000, '(');
+    expression += "7";
+    expression += std::string(5000, ')');
+
+    double value = 0;
+    std::string error;
+
+    REQUIRE(eval(expression, &value, &error));
+    CHECK(value == 7);
+}
+
 // ------------------------------------------------------------- your tests
 //
 // Still to write (spec §6 has the full list). Suggested names:
